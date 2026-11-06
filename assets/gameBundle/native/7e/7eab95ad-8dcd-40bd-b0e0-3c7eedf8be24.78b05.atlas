@@ -1,0 +1,27 @@
+
+paomadeng.png
+size: 966,162
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+deng
+  rotate: false
+  xy: 705, 59
+  size: 34, 34
+  orig: 40, 40
+  offset: 3, 2
+  index: -1
+side_light
+  rotate: true
+  xy: 705, 95
+  size: 65, 259
+  orig: 71, 267
+  offset: 3, 3
+  index: -1
+up_light
+  rotate: false
+  xy: 2, 2
+  size: 701, 158
+  orig: 707, 168
+  offset: 3, 9
+  index: -1
