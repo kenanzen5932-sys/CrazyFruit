@@ -468,9 +468,9 @@
         } catch (e) { /* */ }
       }
     }
-    // 6) Sandık paneli: arka plan resminin parçası. Yeni arka planda (zabu/cf_bg_v1.webp)
+    // 6) Sandık paneli: arka plan resminin parçası. Yeni arka planda (zabu/cf_bg_v2.webp)
     //    büyük boş panel yok, sonuç çubuğu onun yerinde (çiplerin hemen altında, Greedy gibi).
-    //    Sonuç satırı da 158 birim yukarı taşınır (Widget her karede alta çekiyordu → kapatılır).
+    //    Sonuç satırı da 118 birim yukarı taşınır (Widget her karede alta çekiyordu → kapatılır).
     if (!patched.chest) {
       try {
         var GM2 = cc.js.getClassByName('GameMain');
@@ -492,7 +492,7 @@
           patched.chest = true;
           var tcl = ct.getChildByName('treasure_chest_layer');
           if (tcl) tcl.active = false;
-          cc.assetManager.loadRemote(location.origin + '/zabu/cf_bg_v1.webp', { ext: '.webp' }, function (err, img) {
+          cc.assetManager.loadRemote(location.origin + '/zabu/cf_bg_v2.webp', { ext: '.webp' }, function (err, img) {
             if (err || !img) return;
             try {
               var tex = new cc.Texture2D(); tex.image = img;
@@ -502,7 +502,7 @@
                 if (!n) return;
                 var w = n.getComponent(cc.Widget);
                 if (w) w.enabled = false;
-                n.setPosition(n.position.x, n.position.y + 158, n.position.z);
+                n.setPosition(n.position.x, n.position.y + 118, n.position.z);
               });
             } catch (e) { /* */ }
           });
