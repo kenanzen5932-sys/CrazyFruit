@@ -273,7 +273,7 @@
   // 2) Avatar: yuvarlak avatar materyali, resim sonradan yüklenince çizmiyordu
   //    (kazanan popup'ında isim var avatar yok). Yüklemeden sonra materyali
   //    yeniden ata.
-  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false };
+  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false, chest: false };
   function tryPatch() {
     var cc = window.cc;
     if (!cc || !cc.js || typeof cc.js.getClassByName !== 'function') return false;
@@ -369,9 +369,23 @@
     if (!patched.rank) {
       var RB = cc.js.getClassByName('GameRankBtn');
       if (RB && RB.prototype) {
-        var hide = function () { try { this.node.active = false; } catch (e) { /* */ } };
-        RB.prototype.onLoad = hide;
-        RB.prototype.onEnable = hide;
+        // Orijinal onLoad çalışsın (alanlar dolsun) → sonra gizle. onLoad'ı tamamen
+        // ezmek alanları null bırakıyordu → oyun her karede hata verip takılıyordu.
+        if (!RB.prototype.__zabuWrapped) {
+          RB.prototype.__zabuWrapped = true;
+          var oLoad = RB.prototype.onLoad;
+          RB.prototype.onLoad = function () {
+            try { if (oLoad) oLoad.apply(this, arguments); } catch (e) { /* */ }
+            try { this.node.active = false; } catch (e) { /* */ }
+          };
+          Object.getOwnPropertyNames(RB.prototype).forEach(function (k) {
+            if (k === 'onLoad' || k === 'constructor' || k === '__zabuWrapped') return;
+            var d = Object.getOwnPropertyDescriptor(RB.prototype, k);
+            var f = d && d.value;
+            if (typeof f !== 'function') return;
+            RB.prototype[k] = function () { try { return f.apply(this, arguments); } catch (e) { return undefined; } };
+          });
+        }
         try {
           var walk = function (n) {
             (n.components || []).forEach(function (c) { if (c instanceof RB) { c.node.active = false; patched.rank = true; } });
@@ -382,7 +396,34 @@
         } catch (e) { /* */ }
       }
     }
-    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank;
+    // 6) Sandık (hazine kutusu) alanı: bizde sandık yok → gizle, sonuçlar onun yerine (Greedy gibi)
+    if (!patched.chest) {
+      try {
+        var TC = cc.js.getClassByName('TreasureChestView');
+        var GM2 = cc.js.getClassByName('GameMain');
+        var scn = cc.director && cc.director.getScene && cc.director.getScene();
+        if (TC && GM2 && scn) {
+          var chest = null, main = null;
+          var walk2 = function (n) {
+            (n.components || []).forEach(function (c) {
+              if (!chest && c instanceof TC) chest = c;
+              if (!main && c instanceof GM2) main = c;
+            });
+            (n.children || []).forEach(walk2);
+          };
+          walk2(scn);
+          if (chest && main && main._resultLayout) {
+            var cp = chest.node.getWorldPosition();
+            var rl = main._resultLayout;
+            var rp = rl.getWorldPosition();
+            chest.node.active = false;
+            rl.setWorldPosition(rp.x, cp.y, rp.z);
+            patched.chest = true;
+          }
+        }
+      } catch (e) { /* */ }
+    }
+    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank && patched.chest;
   }
   // ── Ekran uyumu ────────────────────────────────────────────────────────
   // Tasarım 750×1334 ve FIXED_WIDTH: alan bu orandan kısaysa (kısa telefon,
