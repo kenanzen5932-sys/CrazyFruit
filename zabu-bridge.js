@@ -273,12 +273,51 @@
   // 2) Avatar: yuvarlak avatar materyali, resim sonradan yüklenince çizmiyordu
   //    (kazanan popup'ında isim var avatar yok). Yüklemeden sonra materyali
   //    yeniden ata.
-  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false, coinBtn: false, chest: false };
+  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false, coinBtn: false, chest: false, fingerNow: false };
   function tryPatch() {
     var cc = window.cc;
     if (!cc || !cc.js || typeof cc.js.getClassByName !== 'function') return false;
 
-    // Parmak: Crazy Fruit'in kendi mantığı doğru (Greedy yaması el imlecini gizlemiyordu) → yamasız
+    // Parmak: Crazy Fruit'in kendi mantığı doğru (Greedy yaması el imlecini gizlemiyordu).
+    // Oyun parmağı ancak ilk saniye tikinde gösteriyordu → yeni tur / yeniden açılışta
+    // 1-2 sn geç geliyordu. Bahis aşaması başlar başlamaz hemen göster.
+    if (!window.__zabuGameData && window.System && typeof window.System.has === 'function' &&
+        window.System.has('chunks:///_virtual/GameModel.ts')) {
+      window.__zabuGameData = function () { return null; };
+      window.System.import('chunks:///_virtual/GameModel.ts').then(function (m) {
+        window.__zabuGameData = function () { return (m && m.gameModel && m.gameModel.gameData) || null; };
+      }).catch(function () { window.__zabuGameData = null; });
+    }
+    if (!patched.fingerNow) {
+      var GMF = cc.js.getClassByName('GameMain');
+      if (GMF && GMF.prototype && typeof GMF.prototype.updateGameState === 'function' &&
+          typeof GMF.prototype.updateItemFingerState === 'function') {
+        var showNow = function (self) {
+          try {
+            var gd = self && self._contentTop && window.__zabuGameData && window.__zabuGameData();
+            if (gd && gd.state === 1 && gd.countDown > 0) {
+              var idx = self._curFingerIndex >= 0 ? self._curFingerIndex : 0;
+              self.updateItemFingerState(idx % 8);
+            }
+          } catch (e) { /* */ }
+        };
+        var oState = GMF.prototype.updateGameState;
+        GMF.prototype.updateGameState = function (t) {
+          var r = oState.apply(this, arguments);
+          if (t && t.state === 1) showNow(this);
+          return r;
+        };
+        if (typeof GMF.prototype.gameInitDataRsp === 'function') {
+          var oInit = GMF.prototype.gameInitDataRsp;
+          GMF.prototype.gameInitDataRsp = function () {
+            var r = oInit.apply(this, arguments);
+            showNow(this);
+            return r;
+          };
+        }
+        patched.fingerNow = true;
+      }
+    }
     patched.finger = true;
     if (!patched.finger) {
       var GM = cc.js.getClassByName('GameMain');
@@ -458,7 +497,7 @@
         }
       } catch (e) { /* */ }
     }
-    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank && patched.coinBtn && patched.chest;
+    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank && patched.coinBtn && patched.chest && patched.fingerNow;
   }
   // ── Ekran uyumu ────────────────────────────────────────────────────────
   // Tasarım 750×1334 ve FIXED_WIDTH: alan bu orandan kısaysa (kısa telefon,
