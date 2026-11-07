@@ -273,7 +273,7 @@
   // 2) Avatar: yuvarlak avatar materyali, resim sonradan yüklenince çizmiyordu
   //    (kazanan popup'ında isim var avatar yok). Yüklemeden sonra materyali
   //    yeniden ata.
-  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false, chest: false };
+  var patched = { finger: false, avatar: false, record: false, lang: false, rank: false, coinBtn: false, chest: false };
   function tryPatch() {
     var cc = window.cc;
     if (!cc || !cc.js || typeof cc.js.getClassByName !== 'function') return false;
@@ -396,6 +396,35 @@
         } catch (e) { /* */ }
       }
     }
+    // 5b) "i" (oyun parası açıklaması) butonu: bizde oyun parası yok → gizle
+    if (!patched.coinBtn) {
+      var CB = cc.js.getClassByName('CoinBtnView');
+      if (CB && CB.prototype) {
+        if (!CB.prototype.__zabuWrapped) {
+          CB.prototype.__zabuWrapped = true;
+          var cbLoad = CB.prototype.onLoad;
+          CB.prototype.onLoad = function () {
+            try { if (cbLoad) cbLoad.apply(this, arguments); } catch (e) { /* */ }
+            try { this.node.active = false; } catch (e) { /* */ }
+          };
+          Object.getOwnPropertyNames(CB.prototype).forEach(function (k) {
+            if (k === 'onLoad' || k === 'constructor' || k === '__zabuWrapped') return;
+            var d = Object.getOwnPropertyDescriptor(CB.prototype, k);
+            var f = d && d.value;
+            if (typeof f !== 'function') return;
+            CB.prototype[k] = function () { try { return f.apply(this, arguments); } catch (e) { return undefined; } };
+          });
+        }
+        try {
+          var sc3 = cc.director && cc.director.getScene && cc.director.getScene();
+          var walk3 = function (n) {
+            (n.components || []).forEach(function (c) { if (c instanceof CB) { c.node.active = false; patched.coinBtn = true; } });
+            (n.children || []).forEach(walk3);
+          };
+          if (sc3) walk3(sc3);
+        } catch (e) { /* */ }
+      }
+    }
     // 6) Sandık (hazine kutusu) alanı: bizde sandık yok → gizle, sonuçlar onun yerine (Greedy gibi)
     if (!patched.chest) {
       try {
@@ -423,7 +452,7 @@
         }
       } catch (e) { /* */ }
     }
-    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank && patched.chest;
+    return patched.finger && patched.avatar && patched.record && patched.lang && patched.rank && patched.coinBtn && patched.chest;
   }
   // ── Ekran uyumu ────────────────────────────────────────────────────────
   // Tasarım 750×1334 ve FIXED_WIDTH: alan bu orandan kısaysa (kısa telefon,
