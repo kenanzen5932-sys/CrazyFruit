@@ -18,6 +18,7 @@
   'use strict';
 
   var GAME_ID = 29;
+  var BET_SECONDS = 30; // sunucu crazy_fruit_config.bet_seconds
   var ALLOWED_ACTIONS = ['CrazyFruit:init', 'CrazyFruit:join', 'CrazyFruit:bet', 'CrazyFruit:charge'];
 
   var user = null;
@@ -281,40 +282,41 @@
     // Parmak: Crazy Fruit'in kendi mantığı doğru (Greedy yaması el imlecini gizlemiyordu).
     // Oyun parmağı ancak ilk saniye tikinde gösteriyordu → yeni tur / yeniden açılışta
     // 1-2 sn geç geliyordu. Bahis aşaması başlar başlamaz hemen göster.
+    // Parmak: konumu kalan saniyeden hesaplanır → tur başında HEMEN görünür, yeniden
+    // açılışta başa sarmaz ve odadaki herkeste aynı kutuda olur (oyun sayaç -1'den
+    // başlatıp ilk saniye gizliyordu, init'te de sıfırlıyordu).
     if (!window.__zabuGameData && window.System && typeof window.System.has === 'function' &&
         window.System.has('chunks:///_virtual/GameModel.ts')) {
       window.__zabuGameData = function () { return null; };
       window.System.import('chunks:///_virtual/GameModel.ts').then(function (m) {
         window.__zabuGameData = function () { return (m && m.gameModel && m.gameModel.gameData) || null; };
-      }).catch(function () { window.__zabuGameData = null; });
+      }).catch(function () { /* */ });
     }
     if (!patched.fingerNow) {
       var GMF = cc.js.getClassByName('GameMain');
-      if (GMF && GMF.prototype && typeof GMF.prototype.updateGameState === 'function' &&
-          typeof GMF.prototype.updateItemFingerState === 'function') {
-        var showNow = function (self) {
-          try {
-            var gd = self && self._contentTop && window.__zabuGameData && window.__zabuGameData();
-            if (gd && gd.state === 1 && gd.countDown > 0) {
-              var idx = self._curFingerIndex >= 0 ? self._curFingerIndex : 0;
-              self.updateItemFingerState(idx % 8);
-            }
-          } catch (e) { /* */ }
+      if (GMF && GMF.prototype && typeof GMF.prototype.updateCountDownLabel === 'function') {
+        var fingerAt = function (t) { return (((BET_SECONDS - t) % 8) + 8) % 8; };
+        var oCount = GMF.prototype.updateCountDownLabel;
+        GMF.prototype.updateCountDownLabel = function (t) {
+          try { if (typeof t === 'number') { this.__zabuT = t; if (t > 0) this._curFingerIndex = fingerAt(t); } } catch (e) { /* */ }
+          return oCount.apply(this, arguments);
         };
-        var oState = GMF.prototype.updateGameState;
-        GMF.prototype.updateGameState = function (t) {
-          var r = oState.apply(this, arguments);
-          if (t && t.state === 1) showNow(this);
+        // Oyun yeni turda sayacı başlattıktan hemen sonra parmağı gizliyor (-1) → bahis
+        // aşamasındaysak aynı karede doğru kutuda yeniden göster.
+        var oFinger = GMF.prototype.updateItemFingerState;
+        GMF.prototype.updateItemFingerState = function (i) {
+          var r = oFinger.apply(this, arguments);
+          if (i < 0) {
+            var self = this;
+            setTimeout(function () {
+              try {
+                var gd = window.__zabuGameData && window.__zabuGameData();
+                if (gd && gd.state === 1 && self.__zabuT > 0) oFinger.call(self, fingerAt(self.__zabuT));
+              } catch (e) { /* */ }
+            }, 0);
+          }
           return r;
         };
-        if (typeof GMF.prototype.gameInitDataRsp === 'function') {
-          var oInit = GMF.prototype.gameInitDataRsp;
-          GMF.prototype.gameInitDataRsp = function () {
-            var r = oInit.apply(this, arguments);
-            showNow(this);
-            return r;
-          };
-        }
         patched.fingerNow = true;
       }
     }
@@ -466,34 +468,44 @@
         } catch (e) { /* */ }
       }
     }
-    // 6) Sandık/etkinlik paneli (entrance_layout): bizde yok → gizle; sonuç satırı onun yerine (Greedy gibi)
+    // 6) Sandık paneli: arka plan resminin parçası. Yeni arka planda (zabu/cf_bg_v1.webp)
+    //    büyük boş panel yok, sonuç çubuğu onun yerinde (çiplerin hemen altında, Greedy gibi).
+    //    Sonuç satırı da 158 birim yukarı taşınır (Widget her karede alta çekiyordu → kapatılır).
     if (!patched.chest) {
       try {
         var GM2 = cc.js.getClassByName('GameMain');
         var scn = cc.director && cc.director.getScene && cc.director.getScene();
-        var main = null;
+        var main = null, bgSprite = null;
         var walk2 = function (n) {
-          if (main) return;
-          (n.components || []).forEach(function (c) { if (!main && GM2 && c instanceof GM2) main = c; });
+          (n.components || []).forEach(function (c) {
+            if (!main && GM2 && c instanceof GM2) main = c;
+            if (!bgSprite && c instanceof cc.Sprite && c.spriteFrame &&
+                String(c.spriteFrame._uuid || '').indexOf('90eeb80f') === 0) bgSprite = c;
+          });
           (n.children || []).forEach(walk2);
         };
         if (scn) walk2(scn);
         var ct = main && main._content;
-        var ent = ct && ct.getChildByName('entrance_layout');
         var rl = ct && ct.getChildByName('result_layout');
         var rt = ct && ct.getChildByName('result_title_label');
-        if (ent && rl) {
-          var dy = ent.position.y - rl.position.y;
-          ent.active = false;
-          var dots = ct.getChildByName('dot_layout');
-          if (dots) dots.active = false;
-          [rl, rt].forEach(function (n) {
-            if (!n) return;
-            var w = n.getComponent(cc.Widget);
-            if (w) w.enabled = false; // hizalama her karede alta çekiyordu
-            n.setPosition(n.position.x, n.position.y + dy, n.position.z);
-          });
+        if (ct && rl && bgSprite) {
           patched.chest = true;
+          var tcl = ct.getChildByName('treasure_chest_layer');
+          if (tcl) tcl.active = false;
+          cc.assetManager.loadRemote(location.origin + '/zabu/cf_bg_v1.webp', { ext: '.webp' }, function (err, img) {
+            if (err || !img) return;
+            try {
+              var tex = new cc.Texture2D(); tex.image = img;
+              var sf = new cc.SpriteFrame(); sf.texture = tex;
+              bgSprite.spriteFrame = sf;
+              [rl, rt].forEach(function (n) {
+                if (!n) return;
+                var w = n.getComponent(cc.Widget);
+                if (w) w.enabled = false;
+                n.setPosition(n.position.x, n.position.y + 158, n.position.z);
+              });
+            } catch (e) { /* */ }
+          });
         }
       } catch (e) { /* */ }
     }
