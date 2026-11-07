@@ -278,6 +278,8 @@
     var cc = window.cc;
     if (!cc || !cc.js || typeof cc.js.getClassByName !== 'function') return false;
 
+    // Parmak: Crazy Fruit'in kendi mantığı doğru (Greedy yaması el imlecini gizlemiyordu) → yamasız
+    patched.finger = true;
     if (!patched.finger) {
       var GM = cc.js.getClassByName('GameMain');
       if (GM && GM.prototype && typeof GM.prototype.updateItemFingerState === 'function') {
@@ -425,30 +427,34 @@
         } catch (e) { /* */ }
       }
     }
-    // 6) Sandık (hazine kutusu) alanı: bizde sandık yok → gizle, sonuçlar onun yerine (Greedy gibi)
+    // 6) Sandık/etkinlik paneli (entrance_layout): bizde yok → gizle; sonuç satırı onun yerine (Greedy gibi)
     if (!patched.chest) {
       try {
-        var TC = cc.js.getClassByName('TreasureChestView');
         var GM2 = cc.js.getClassByName('GameMain');
         var scn = cc.director && cc.director.getScene && cc.director.getScene();
-        if (TC && GM2 && scn) {
-          var chest = null, main = null;
-          var walk2 = function (n) {
-            (n.components || []).forEach(function (c) {
-              if (!chest && c instanceof TC) chest = c;
-              if (!main && c instanceof GM2) main = c;
-            });
-            (n.children || []).forEach(walk2);
-          };
-          walk2(scn);
-          if (chest && main && main._resultLayout) {
-            var cp = chest.node.getWorldPosition();
-            var rl = main._resultLayout;
-            var rp = rl.getWorldPosition();
-            chest.node.active = false;
-            rl.setWorldPosition(rp.x, cp.y, rp.z);
-            patched.chest = true;
-          }
+        var main = null;
+        var walk2 = function (n) {
+          if (main) return;
+          (n.components || []).forEach(function (c) { if (!main && GM2 && c instanceof GM2) main = c; });
+          (n.children || []).forEach(walk2);
+        };
+        if (scn) walk2(scn);
+        var ct = main && main._content;
+        var ent = ct && ct.getChildByName('entrance_layout');
+        var rl = ct && ct.getChildByName('result_layout');
+        var rt = ct && ct.getChildByName('result_title_label');
+        if (ent && rl) {
+          var dy = ent.position.y - rl.position.y;
+          ent.active = false;
+          var dots = ct.getChildByName('dot_layout');
+          if (dots) dots.active = false;
+          [rl, rt].forEach(function (n) {
+            if (!n) return;
+            var w = n.getComponent(cc.Widget);
+            if (w) w.enabled = false; // hizalama her karede alta çekiyordu
+            n.setPosition(n.position.x, n.position.y + dy, n.position.z);
+          });
+          patched.chest = true;
         }
       } catch (e) { /* */ }
     }
